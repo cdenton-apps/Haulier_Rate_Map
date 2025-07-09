@@ -9,7 +9,7 @@ from geopy.extra.rate_limiter import RateLimiter
 import branca.colormap as cm
 
 st.set_page_config(layout="wide")
-st.title("🚚 Transport Cost Map by Postcode")
+st.title("Transport Cost Map by Postcode")
 
 # Load and clean data
 df = pd.read_csv("Transport Cost Comparison.csv")
