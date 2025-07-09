@@ -6,7 +6,7 @@ from streamlit_folium import st_folium
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 
-st.title("🚚 Transport Cost Map by Postcode")
+st.title("Transport Cost Map by Postcode")
 
 # Load your data
 df = pd.read_csv("Transport Cost Comparison.csv")
