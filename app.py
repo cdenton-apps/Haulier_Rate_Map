@@ -2,86 +2,62 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium.plugins import MarkerCluster, HeatMap
-from streamlit_folium import st_folium
-from geopy.geocoders import Nominatim
-from geopy.extra.rate_limiter import RateLimiter
-import branca.colormap as cm
+from streamlit_folium import folium_static
+from folium.plugins import MarkerCluster
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
-st.set_page_config(layout="wide")
-st.title("Transport Cost Map by Postcode")
-
-# Load and clean data
+# Load data
 df = pd.read_csv("Transport Cost Comparison.csv")
-df["Transport / 1000"] = pd.to_numeric(df["Transport / 1000"], errors="coerce")
-df["SP/1000"] = pd.to_numeric(df["SP/1000"], errors="coerce")
-df["Annual Volume"] = pd.to_numeric(df["Annual Volume"], errors="coerce")
 
-# Group and merge product details
-df_grouped = df.groupby("Postcode", as_index=False).agg({
-    "Transport / 1000": "mean",
-    "SP/1000": "mean",
-    "Annual Volume": "sum"
-})
-df_first = df.groupby("Postcode").first().reset_index()
-df_grouped = df_grouped.merge(df_first[["Postcode", "Code", "Product"]], on="Postcode", how="left")
+# Create color gradient from green (low) to red (high)
+cmap = plt.get_cmap("RdYlGn_r")
 
-# Geocode
-geolocator = Nominatim(user_agent="streamlit_postcode_mapper")
-geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-df_grouped["location"] = df_grouped["Postcode"].apply(geocode)
-df_grouped["lat"] = df_grouped["location"].apply(lambda loc: loc.latitude if loc else None)
-df_grouped["lon"] = df_grouped["location"].apply(lambda loc: loc.longitude if loc else None)
-df_grouped.dropna(subset=["lat", "lon"], inplace=True)
+min_cost = df["Transport / 1000"].min()
+max_cost = df["Transport / 1000"].max()
 
-st.success(f"Mapped {len(df_grouped)} valid postcodes.")
+def cost_to_color(value):
+    norm = (value - min_cost) / (max_cost - min_cost)
+    rgb = cmap(norm)[:3]
+    return f"rgb({int(rgb[0]*255)}, {int(rgb[1]*255)}, {int(rgb[2]*255)})"
 
-# Color scale
-min_cost = df_grouped["Transport / 1000"].min()
-max_cost = df_grouped["Transport / 1000"].max()
-colormap = cm.linear.YlOrRd_09.scale(min_cost, max_cost)
-colormap.caption = "Transport Cost (£ / 1000)"
+# Streamlit UI
+st.set_page_config(layout="wide")
+st.title("Transport Cost by Postcode")
 
-# Select view type
-view_type = st.radio("Select View Type", ["Markers with Color", "Clustered Markers", "Heatmap"], horizontal=True)
+st.markdown("""
+**Map Legend:**
+- Green = Low transport cost
+- Red = High transport cost
+""")
 
-# Create map
-m = folium.Map(location=[54.5, -3], zoom_start=6)
+# Initialize map
+center_lat = df["lat"].mean()
+center_lon = df["lon"].mean()
+map_obj = folium.Map(location=[center_lat, center_lon], zoom_start=6)
 
-if view_type == "Markers with Color":
-    for _, row in df_grouped.iterrows():
-        tooltip = f"{row['Postcode']} | £{row['Transport / 1000']:.2f} | {row['Product']}"
-        folium.CircleMarker(
-            location=[row["lat"], row["lon"]],
-            radius=6,
-            tooltip=tooltip,
-            color=colormap(row["Transport / 1000"]),
-            fill=True,
-            fill_color=colormap(row["Transport / 1000"])
-        ).add_to(m)
-    colormap.add_to(m)
+# Marker clustering
+marker_cluster = MarkerCluster().add_to(map_obj)
 
-elif view_type == "Clustered Markers":
-    marker_cluster = MarkerCluster().add_to(m)
-    for _, row in df_grouped.iterrows():
-        tooltip = f"{row['Postcode']} | £{row['Transport / 1000']:.2f} | {row['Product']}"
-        folium.CircleMarker(
-            location=[row["lat"], row["lon"]],
-            radius=6,
-            tooltip=tooltip,
-            color=colormap(row["Transport / 1000"]),
-            fill=True,
-            fill_color=colormap(row["Transport / 1000"])
-        ).add_to(marker_cluster)
-    colormap.add_to(m)
-
-elif view_type == "Heatmap":
-    heat_data = df_grouped[["lat", "lon", "Transport / 1000"]].values.tolist()
-    HeatMap(heat_data, radius=15, blur=10).add_to(m)
+# Add data points
+for _, row in df.iterrows():
+    color = cost_to_color(row["Transport / 1000"])
+    popup = folium.Popup(f"""
+        <b>Customer:</b> {row['Customer']}<br>
+        <b>Postcode:</b> {row['Postcode']}<br>
+        <b>Product:</b> {row['Product']}<br>
+        <b>Transport / 1000:</b> £{row['Transport / 1000']:.2f}<br>
+        <b>Annual Volume:</b> {row['Annual Volume']:.0f}
+    """, max_width=300)
+    folium.CircleMarker(
+        location=(row["lat"], row["lon"]),
+        radius=6,
+        color=color,
+        fill=True,
+        fill_color=color,
+        fill_opacity=0.9,
+        popup=popup
+    ).add_to(marker_cluster)
 
 # Display map
-st_folium(m, width=1100, height=600)
-
-# Optional: Show full data
-with st.expander("📋 View Full Data Table"):
-    st.dataframe(df_grouped)
+folium_static(map_obj)
