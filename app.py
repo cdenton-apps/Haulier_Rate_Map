@@ -7,8 +7,12 @@ from folium.plugins import MarkerCluster
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-# Load data
+# Load and clean data
 df = pd.read_csv("Transport Cost Comparison.csv")
+df.columns = df.columns.str.strip()  # Ensure no whitespace issues
+
+# Debug: Show available columns
+# st.write("Columns:", df.columns.tolist())
 
 # Create color gradient from green (low) to red (high)
 cmap = plt.get_cmap("RdYlGn_r")
